@@ -1,8 +1,8 @@
-# ESP8266_MQTT
+# ESP8266 MQTT With Username & Password Authentication
 
 ## Introduction
 
-A small project for using the snappily titled AZ_Delivery [NodeMCU Lua Amica Module V2 ESP8266 ESP-12F WIFI Wifi Development Board](https://www.az-delivery.de/en/products/nodemcu#description) with CP2102 with username & password secured MQTT. The board is connected to the computer over USB where it receives its power and I am creating in in Arduino Studio and debugging it on the Mac in CoolTerm. Eventually this will move to Visual Studio Code.
+A small project for using the snappily titled AZ_Delivery [NodeMCU Lua Amica Module V2 ESP8266 ESP-12F WIFI Wifi Development Board](https://www.az-delivery.de/en/products/nodemcu#description) with CP2102 with username & password secured MQTT. The board is connected to the computer over USB where it receives its power and I am creating in in Arduino Studio and debugging it on the Mac in CoolTerm. Eventually this will move to Visual Studio Code. This project has been developed and tested using macOS Big Sur, but should be fine on everything else.
 
 ## Requirements
 
