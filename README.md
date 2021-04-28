@@ -20,6 +20,14 @@ My thanks to GitHub user [brnyza](https://github.com/brnyza) for his tip which y
 
 The server certificates are checked - the MQTT broker I use does have valid certificates that are provided by Letsencrypt - but otherwise I do not use them for authenticating the communication. This may may come later when all the other clients in the can support it.
 
+## Change History
+
+**28.04.21** - Added a basic ISR to handle the button press. This isn't strictly necessary but is me learning more about Arduino programming and the hardware it is based on. This version fulfills all the basic requirements of my project and I will proceed to build a fully enclosed but USB powered (no batteries) version that we can actually start using.
+
+## Known Issues
+
+1. The interrupt triggers not just on rising edges, but also apparently on falling. This may be caused by the switch bouncing and triggering false edges. I will add an RC network to the hardware to do hardware debouncing of this.
+
 ## Some Notes
 
 1. There is some attempt in the sketch to use unsecured MQTT if the MQTT port is 1883 - this is currently untested but might work.
