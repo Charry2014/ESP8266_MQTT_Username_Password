@@ -35,7 +35,8 @@
 
 #endif
 
-
+// Define this to disable all real MQTT input & output
+#define TESTING_DISABLE_MQTT_OUTPUT
 
 
 // GPIO configuration
@@ -52,14 +53,19 @@
 #define MQTT_GATE_OPEN_TOPIC "gate"
 #define MQTT_GATE_OPEN_PAYLOAD "0"
 
-#define MQTT_GATE_EVENT_TOPIC in_topic // "doorbell/ring"
+// For testing we use another MQTT topic
+#if defined (TESTING_DISABLE_MQTT_OUTPUT)
+#define MQTT_GATE_EVENT_TOPIC in_topic
+#else
+#define MQTT_GATE_EVENT_TOPIC "doorbell/ring"
+#endif
 
 // Configuration for the GPIO Pins - specify input or output, initial value.
 typedef struct GPIO_Setup { int GPIO; int INOUT; int Initial; };
 static const GPIO_Setup GPIO_list[] = {
   {STATUS_ERROR_LED,      OUTPUT, LOW},
   {GATE_OPEN_STATUS_LED,  OUTPUT, LOW},
-  {GATE_OPEN_SWITCH_GPIO, INPUT,  LOW},
+  {GATE_OPEN_SWITCH_GPIO, INPUT,  -1},
   {GATE_RING_STATUS_LED,  OUTPUT, LOW},
   {-1, -1, -1}
   };
@@ -84,30 +90,24 @@ volatile bool trigger_gate_release = false;
 
 /**
  * Here we go - set everything up
+ * Enable the Watchdog, and set serial baud rate
+ * Configure GPIO pins and attach interrupts
+ * Connect the Wifi set the clock via NTP and 
+ * finally verify the MQTT server identity
  */
 void setup() {
-  ;
-
   wdt_enable(WDTO_8S);
   Serial.begin(SERIAL_BAUD_RATE);
   Serial.println();
 
+  // Set up the GPIOs
   for( const GPIO_Setup * gp = &GPIO_list[0]; gp->GPIO != -1; gp++) {
     pinMode(gp->GPIO, gp->INOUT);
-    digitalWrite(gp->GPIO, gp->Initial);
+    if(gp->INOUT == OUTPUT)
+      digitalWrite(gp->GPIO, gp->Initial);
   }
 
-#if 0
-  pinMode(STATUS_ERROR_LED, OUTPUT);
-  pinMode(GATE_OPEN_STATUS_LED, OUTPUT);
-  //pinMode(GATE_RING_STATUS_LED, OUTPUT);
-  digitalWrite(STATUS_ERROR_LED, LOW);
-  digitalWrite(GATE_OPEN_STATUS_LED, LOW);
-  //digitalWrite(GATE_RING_STATUS_LED, LOW);
-  
   // Set GATE_OPEN_SWITCH_GPIO to be input with interrupt 
-  pinMode(GATE_OPEN_SWITCH_GPIO, INPUT);
-#endif
   attachInterrupt(digitalPinToInterrupt(GATE_OPEN_SWITCH_GPIO), ISR_open_gate_switch, RISING);
 
   // Append a random string to the cliendId stub
@@ -142,8 +142,12 @@ void loop() {
     // The trigger time is set in the ISR and means the button was pressed
     // This triggers the release, then waits a second before carrying on
     trigger_gate_release = false;
+#if defined (TESTING_DISABLE_MQTT_OUTPUT)
+    Serial.println("DEBUG: Opening Gate disabled for testing");
+#else
     Serial.println("Opening Gate");
-    // mqtt_client.publish(MQTT_GATE_OPEN_TOPIC, MQTT_GATE_OPEN_PAYLOAD);
+    mqtt_client.publish(MQTT_GATE_OPEN_TOPIC, MQTT_GATE_OPEN_PAYLOAD);
+#endif
   }
 
   if( millis() > gate_switch_trigger_time + 1000 && 
@@ -277,7 +281,7 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {
     Serial.print(receivedChar);
   }
   Serial.println();
-  digitalWrite(4, HIGH);
+  digitalWrite(GATE_RING_STATUS_LED, HIGH);
 }
 
 
