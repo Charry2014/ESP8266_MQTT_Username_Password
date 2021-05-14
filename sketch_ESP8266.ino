@@ -38,12 +38,16 @@
 // Define this to disable all real MQTT input & output
 #define TESTING_DISABLE_MQTT_OUTPUT
 
+#define SERIAL_BAUD_RATE 115200
+
 
 // GPIO configuration
 #define STATUS_ERROR_LED       2     // led_built_in_ESP
-#define GATE_OPEN_STATUS_LED  16     // led_built_in_Node
+#define GATE_OPEN_STATUS_LED  16     // Green LED
 #define GATE_OPEN_SWITCH_GPIO  5
-#define GATE_RING_STATUS_LED   4
+#define GATE_RING_STATUS_LED   4     // Red LED
+
+#define DEBOUNCE_DELAY_MS     50
 
 // MQTT Test Topics
 #define in_topic "test/in"
@@ -64,13 +68,27 @@
 typedef struct GPIO_Setup { int GPIO; int INOUT; int Initial; };
 static const GPIO_Setup GPIO_list[] = {
   {STATUS_ERROR_LED,      OUTPUT, LOW},
-  {GATE_OPEN_STATUS_LED,  OUTPUT, LOW},
+  {GATE_OPEN_STATUS_LED,  OUTPUT, HIGH},
   {GATE_OPEN_SWITCH_GPIO, INPUT,  -1},
-  {GATE_RING_STATUS_LED,  OUTPUT, LOW},
+  {GATE_RING_STATUS_LED,  OUTPUT, HIGH},
   {-1, -1, -1}
   };
 
-#define SERIAL_BAUD_RATE 115200
+
+unsigned int Blink1[] = { 500*312, 200*312 };
+
+typedef struct PatternStruct
+  {
+    unsigned int repeat;
+    unsigned int * pattern;
+    unsigned int GPIO;
+    int activeLevel;
+  };
+
+volatile PatternStruct activePattern;
+
+
+
 
 #if MQTT_PORT == 1883
 // Unsecured MQTT - currently untested
@@ -107,6 +125,7 @@ void setup() {
       digitalWrite(gp->GPIO, gp->Initial);
   }
 
+  
   // Set GATE_OPEN_SWITCH_GPIO to be input with interrupt 
   attachInterrupt(digitalPinToInterrupt(GATE_OPEN_SWITCH_GPIO), ISR_open_gate_switch, RISING);
 
@@ -134,7 +153,12 @@ void setup() {
 void loop() {
   wdt_reset();
   if (!mqtt_client.connected()) {
+    digitalWrite(GATE_OPEN_STATUS_LED, HIGH);
+    digitalWrite(GATE_RING_STATUS_LED, HIGH);
     reconnect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD);
+    digitalWrite(GATE_OPEN_STATUS_LED, LOW);
+    digitalWrite(GATE_RING_STATUS_LED, LOW);
+
   }
   mqtt_client.loop();
 
@@ -142,6 +166,7 @@ void loop() {
     // The trigger time is set in the ISR and means the button was pressed
     // This triggers the release, then waits a second before carrying on
     trigger_gate_release = false;
+    set_blink_pattern(GATE_OPEN_STATUS_LED, 10, Blink1);
 #if defined (TESTING_DISABLE_MQTT_OUTPUT)
     Serial.println("DEBUG: Opening Gate disabled for testing");
 #else
@@ -155,7 +180,6 @@ void loop() {
     // Retrigger the IRQ when the time has elapsed and the switch
     // has been released.
     gate_switch_trigger_time = 0;
-    digitalWrite(GATE_OPEN_STATUS_LED, LOW);
   }
 }
 
@@ -170,16 +194,60 @@ void loop() {
 ICACHE_RAM_ATTR void ISR_open_gate_switch(void) {
   static unsigned long debounce_time = 0;
   unsigned long interrupt_time = millis();
-  if(interrupt_time - debounce_time < 50)
+  if(interrupt_time - debounce_time < DEBOUNCE_DELAY_MS)
     return;
   debounce_time = interrupt_time;
 
   if(gate_switch_trigger_time == 0) {
     gate_switch_trigger_time = interrupt_time;
     trigger_gate_release = true;
-    digitalWrite(GATE_OPEN_STATUS_LED, HIGH);
   }
 }
+
+/**
+ * timer1 ISR - work through the blink pattern repeat count.
+ */
+void ICACHE_RAM_ATTR onTimerISR(){
+  static volatile unsigned int idx = 0;
+
+  activePattern.activeLevel = activePattern.activeLevel ? LOW : HIGH;
+  digitalWrite(activePattern.GPIO, activePattern.activeLevel);
+  if(activePattern.repeat > 0) {
+    activePattern.repeat -= 1;
+    timer1_write(activePattern.pattern[idx & 1]);
+  }
+  idx += 1;
+}
+
+/**
+ * set_blink_pattern - Blink the GPIO with a pattern dictated by the pattern
+ * and repeat a number of times.
+ * 
+ * Configure timer1 interrupt 
+ * Clock of 80MHz - TIM_DIV16  80 MHz /  16 =   5    MHz or 0.2 microseconds
+ * Clock of 80MHz - TIM_DIV256 80 MHz / 256 = 312500 KHz or  32 microseconds
+ * So .0000002 * 5000 = .001 seconds or 1000 Hz.
+ */
+void set_blink_pattern(unsigned int GPIO, unsigned int repeat, unsigned int * pattern)
+{
+  timer1_disable();
+  
+  activePattern.repeat = repeat * 2;
+  activePattern.pattern = pattern;
+  activePattern.GPIO = GPIO;
+  activePattern.activeLevel = HIGH;
+  
+  timer1_attachInterrupt(onTimerISR);
+  digitalWrite(GPIO, activePattern.activeLevel);
+
+  timer1_isr_init( );
+  timer1_attachInterrupt(onTimerISR);
+  timer1_enable(TIM_DIV256, TIM_EDGE, TIM_SINGLE);
+  timer1_write(pattern[0]);
+}
+
+
+
 
 /**
  * Loop until we're reconnected to the MQTT broker
@@ -251,7 +319,6 @@ int verifytls(const char * server, unsigned int port) {
  * the TLS certificates offered by the server are currently valid.
  */
  void setup_time(){
-  // 
   Serial.print("set_time: Setting time using SNTP ");
   configTime(8 * 3600, 0, "de.pool.ntp.org");
   time_t now = time(nullptr);
@@ -281,7 +348,8 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {
     Serial.print(receivedChar);
   }
   Serial.println();
-  digitalWrite(GATE_RING_STATUS_LED, HIGH);
+  if ( (char) *payload == '1')
+    set_blink_pattern(GATE_RING_STATUS_LED, 10, Blink1);
 }
 
 
