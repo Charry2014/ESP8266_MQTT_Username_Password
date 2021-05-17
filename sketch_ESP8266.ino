@@ -16,7 +16,9 @@
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 #include <time.h>
-//#include <avr/wdt.h>
+
+
+const char compile_info[] = __FILE__ " - " __DATE__ " " __TIME__;
 
 /* 
  * secrets.h defines things that are - secret :-)
@@ -34,6 +36,7 @@
 #include "fake_secrets.h"
 
 #endif
+#define VERSION_STRING "1.0.0"
 
 // Define this to disable all real MQTT input & output
 #define TESTING_DISABLE_MQTT_OUTPUT
@@ -75,7 +78,21 @@ static const GPIO_Setup GPIO_list[] = {
   };
 
 
-unsigned int Blink1[] = { 500*312, 200*312 };
+/**
+ * Simple wrapper for ISR based LED blinking
+ * 
+ * Clock of 80MHz - TIM_DIV16  80 MHz /  16 =   5    MHz or 0.2 microseconds
+ * So .0000002 * 5000 = .001 seconds or 1000 Hz.
+ * 
+ * Clock of 80MHz - TIM_DIV256 80 MHz / 256 = 312500 KHz or  31 microseconds
+ * 
+ * The Blink arrays give the on and off periods, in milliseconds. They must be
+ * exactly two elements long.
+ */
+#define TIMER_MS_FACTOR      312
+unsigned int Blink1[]          = { 500*TIMER_MS_FACTOR, 200*TIMER_MS_FACTOR };
+unsigned int Blink_attention[] = { 200*TIMER_MS_FACTOR, 200*TIMER_MS_FACTOR };
+
 
 typedef struct PatternStruct
   {
@@ -118,6 +135,12 @@ void setup() {
   Serial.begin(SERIAL_BAUD_RATE);
   Serial.println();
 
+#if defined (TESTING_DISABLE_MQTT_OUTPUT)
+  Serial.print("!DEBUG ENABLED! - ");
+#endif
+  Serial.print(VERSION_STRING " - Build details ");
+  Serial.println(compile_info);
+    
   // Set up the GPIOs
   for( const GPIO_Setup * gp = &GPIO_list[0]; gp->GPIO != -1; gp++) {
     pinMode(gp->GPIO, gp->INOUT);
@@ -127,7 +150,7 @@ void setup() {
 
   
   // Set GATE_OPEN_SWITCH_GPIO to be input with interrupt 
-  attachInterrupt(digitalPinToInterrupt(GATE_OPEN_SWITCH_GPIO), ISR_open_gate_switch, RISING);
+  attachInterrupt(digitalPinToInterrupt(GATE_OPEN_SWITCH_GPIO), ISR_open_gate_switch, FALLING);
 
   // Append a random string to the cliendId stub
   clientId += String(random(0xffff), HEX);
@@ -170,13 +193,13 @@ void loop() {
 #if defined (TESTING_DISABLE_MQTT_OUTPUT)
     Serial.println("DEBUG: Opening Gate disabled for testing");
 #else
-    Serial.println("Opening Gate");
+    Serial.println("Opening Gate - publishing to " MQTT_GATE_OPEN_TOPIC);
     mqtt_client.publish(MQTT_GATE_OPEN_TOPIC, MQTT_GATE_OPEN_PAYLOAD);
 #endif
   }
 
   if( millis() > gate_switch_trigger_time + 1000 && 
-      digitalRead(GATE_OPEN_SWITCH_GPIO) == LOW) {
+      digitalRead(GATE_OPEN_SWITCH_GPIO) == HIGH) {
     // Retrigger the IRQ when the time has elapsed and the switch
     // has been released.
     gate_switch_trigger_time = 0;
@@ -224,9 +247,6 @@ void ICACHE_RAM_ATTR onTimerISR(){
  * and repeat a number of times.
  * 
  * Configure timer1 interrupt 
- * Clock of 80MHz - TIM_DIV16  80 MHz /  16 =   5    MHz or 0.2 microseconds
- * Clock of 80MHz - TIM_DIV256 80 MHz / 256 = 312500 KHz or  32 microseconds
- * So .0000002 * 5000 = .001 seconds or 1000 Hz.
  */
 void set_blink_pattern(unsigned int GPIO, unsigned int repeat, unsigned int * pattern)
 {
@@ -265,7 +285,7 @@ void reconnect(const char * client_id, const char * username, const char * passw
       Serial.print("reconnect: failed, rc=");
       Serial.print(mqtt_client.state());
       Serial.println(" try again in 5 seconds");
-      led_blink(STATUS_ERROR_LED, 15);
+      set_blink_pattern(STATUS_ERROR_LED, 20, Blink_attention);
     }
   }
 }
@@ -380,18 +400,6 @@ void print_server_connect(const char * details, const char * server, unsigned in
   Serial.println(port);    
   }
  
-void led_blink(unsigned int led, unsigned int count)
-{
-  int i = 0;
-  for( ;i< count; i++)
-  {
-    digitalWrite(led, HIGH);
-    delay(500);
-    digitalWrite(led, LOW);
-    delay(500);
-  }
-  digitalWrite(led, HIGH);
-}
 
 #if 0
   // 8< -------- Cuttings

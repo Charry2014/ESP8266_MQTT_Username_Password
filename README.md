@@ -2,11 +2,15 @@
 
 ## Introduction
 
-A small project for using the snappily titled AZ_Delivery [NodeMCU Lua Amica Module V2 ESP8266 ESP-12F WIFI Wifi Development Board](https://www.az-delivery.de/en/products/nodemcu#description) with CP2102 with username & password secured MQTT. The board is connected to the computer over USB where it receives its power and I am creating in in Arduino Studio and debugging it on the Mac in CoolTerm. Eventually this will move to Visual Studio Code. This project has been developed and tested using macOS Big Sur, but should be fine on everything else.
+A small project for using the snappily titled AZ_Delivery [NodeMCU Lua Amica Module V2 ESP8266 ESP-12F WIFI Wifi Development Board](https://www.az-delivery.de/en/products/nodemcu#description) with CP2102 as a remote control device for opening a garden gate. The gate is controlled by a Raspberry Pi which is listening to an MQTT topic using Node-Red. The MQTT broker is a fairly standard Mosquitto installation running on an AWS micro instance and is listening on port 8883, secured and using valid certificates from Let's Encrypt. Connecting to the MQTT server requires a username and password combination.
+
+This repository covers the ESP8266 work. During development the board is connected to the computer over USB where it receives its power and I am creating in in Arduino Studio and debugging it on the Mac in CoolTerm. Eventually this will move to Visual Studio Code. This project has been developed and tested using macOS Big Sur, but should be fine on everything else.
 
 ## Requirements
 
-The requirements  of the project are for kind-of secure communication of MQTT messages published from a small, low power board, that can run for some days on a small battery like a couple of AA (we will come to the power saving aspect of this later). This will be used in a larger home automation project where many platforms - including the Raspberry Pi and Android and iPhones - are already playing their part. 
+The requirements  of the project are for kind-of secure communication of MQTT messages published from a small, low power board, that can run for some days on a small battery like a couple of AA (we will come to the power saving aspect of this later). This will be used in a larger home automation project where many platforms - including the Raspberry Pi and Android and iPhones - are already playing their part. There is a switch to release the gate and a couple of LEDs for status information. Full circuit diagram and parts list to follow.
+
+The current state is the board has to be powered by a USB charger and I have not implemented the low-power sleep modes yet. This may get tricky with maintaining the wifi connections, but that is for the future.
 
 ## Description
 
@@ -21,6 +25,8 @@ My thanks to GitHub user [brnyza](https://github.com/brnyza) for his tip which y
 The server certificates are checked - the MQTT broker I use does have valid certificates that are provided by Letsencrypt - but otherwise I do not use them for authenticating the communication. This may may come later when all the other clients in the can support it.
 
 ## Change History
+
+**14.05.21** - This is now subscribing to an MQTT topic and blinking a light when a message arrives. This is the indication that someone rang my doorbell. You can then open the gate by pressing a button which publishes to an MQTT topic - there is a Raspberry Pi listening to this which then releases the gate. 
 
 **02.05.21** - I tidied up the GPIO initialisation with a little wrapper to make sure that all the GPIOs are correctly initialised, and I added the first step of the Watchdog implementation. The code now subscribes to an MQTT topic but doesn't really do anything with it.  
 
